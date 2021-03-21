@@ -6,6 +6,13 @@
 package main;
 
 import java.awt.Point;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.net.InetAddress;
+import java.net.Socket;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 import javafx.animation.Animation;
@@ -21,14 +28,15 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
 import javafx.util.Duration;
-import scenes.EndGameScreen;
+import scenes.StartGameScreen;
+import util.CommunicateWithServerInterface;
 import util.CommunicationWithComponentsInterface;
 
 /**
  *
  * @author vikto
  */
-public class Main extends Application implements CommunicationWithComponentsInterface {
+public class Main extends Application implements CommunicationWithComponentsInterface, CommunicateWithServerInterface {
 
     private List<Point> snakeBody = new ArrayList<>();
     private Point snakeHead;
@@ -38,6 +46,7 @@ public class Main extends Application implements CommunicationWithComponentsInte
     private static final int COLUMNS = ROWS;
     private static final int SQUARE_SIZE = (int) (WIDTH / ROWS);
     private boolean gameOver = false;
+    private boolean isPaused = false;
     private int speed = 120;
     private String direction = "UP";
     private GraphicsContext gc;
@@ -69,7 +78,7 @@ public class Main extends Application implements CommunicationWithComponentsInte
         timeline = new Timeline(new KeyFrame(Duration.millis(speed), e -> run()));
         timeline.setCycleCount(Animation.INDEFINITE);
         timeline.play();
-        primaryStage.setTitle("PyGAME");
+        primaryStage.setTitle("PyGame");
         primaryStage.setScene(scene);
         primaryStage.getIcons().add(new Image("/assets/snakelogo.png"));
         primaryStage.show();
@@ -89,6 +98,8 @@ public class Main extends Application implements CommunicationWithComponentsInte
                 case LEFT:
                     direction = "LEFT";
                     break;
+                case ESCAPE:
+                    pauseGame();
                 default:
                     break;
             }
@@ -110,6 +121,7 @@ public class Main extends Application implements CommunicationWithComponentsInte
         drawScore();
         if (gameOver == true) {
             endMenu();
+
         }
         for (int i = snakeBody.size() - 1; i >= 1; i--) {
             snakeBody.get(i).x = snakeBody.get(i - 1).x;
@@ -196,6 +208,7 @@ public class Main extends Application implements CommunicationWithComponentsInte
             for (int i = 1; i < snakeBody.size(); i++) {
                 if (snakeHead.x == snakeBody.get(i).x && snakeHead.y == snakeBody.get(i).y) {
                     gameOver = true;
+
                     break;
                 }
             }
@@ -204,9 +217,9 @@ public class Main extends Application implements CommunicationWithComponentsInte
 
     public void endMenu() {
         timeline.stop();
-        EndGameScreen endGameScreen = new EndGameScreen();
-        endGameScreen.setInformation(getInformation());
-        endGameScreen.start(primaryStage);
+        StartGameScreen startGameScreen = new StartGameScreen();
+        startGameScreen.setInformation(getInformation());
+        startGameScreen.start(primaryStage);
     }
 
     public void drawScore() {
@@ -229,6 +242,16 @@ public class Main extends Application implements CommunicationWithComponentsInte
         }
     }
 
+    public void pauseGame() {
+        if (isPaused) {
+            timeline.play();
+        } else {
+            timeline.pause();
+        }
+        isPaused = !isPaused;
+
+    }
+
     @Override
     public void setInformation(String string) {
 
@@ -237,5 +260,33 @@ public class Main extends Application implements CommunicationWithComponentsInte
     @Override
     public String getInformation() {
         return String.valueOf(this.score);
+    }
+
+    @Override
+    public void sendInfoToServer() {
+        try {
+            Socket socket = new Socket(InetAddress.getByName(SERVERURL), PORT);
+            PrintWriter pw = new PrintWriter(socket.getOutputStream());
+            pw.println(score);
+            pw.flush();
+        } catch (UnknownHostException ex) {
+            System.out.println(ex.getMessage());
+        } catch (IOException ex) {
+            System.out.println(ex.getMessage());
+        }
+    }
+
+    @Override
+    public void readInfoFromServer() {
+        try {
+            Socket socket = new Socket(InetAddress.getByName(SERVERURL), PORT);
+            InputStreamReader in = new InputStreamReader(socket.getInputStream());
+            BufferedReader bf = new BufferedReader(in);
+            String string = bf.readLine();
+            System.out.println(string);
+        } catch (IOException ex) {
+            System.out.println(ex.getMessage());
+        }
+
     }
 }
