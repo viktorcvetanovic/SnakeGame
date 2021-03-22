@@ -15,6 +15,8 @@ import java.net.Socket;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javafx.animation.Animation;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
@@ -30,16 +32,21 @@ import javafx.stage.Stage;
 import javafx.util.Duration;
 import scenes.StartGameScreen;
 import util.CommunicateWithServerInterface;
-import util.CommunicationWithComponentsInterface;
+import util.CommunicateWithComponentsInterface;
 
-/**
- *
- * @author vikto
- */
-public class Main extends Application implements CommunicationWithComponentsInterface, CommunicateWithServerInterface {
+public class Main extends Application implements CommunicateWithComponentsInterface, CommunicateWithServerInterface {
 
+    //******************user*********************//
+    String user;
+    //*************snake player one*************//
     private List<Point> snakeBody = new ArrayList<>();
+    private String direction = "UP";
     private Point snakeHead;
+    //*********snake player two****************//
+    private List<Point> snakeBodyEnemy = new ArrayList<>();
+    private String directionEnemy = "UP";
+    private Point snakeHeadEnemy;
+    //***********canvas settings**************//    
     private static final double WIDTH = 800;
     private static final double HEIGHT = WIDTH;
     private static final int ROWS = 20;
@@ -48,7 +55,6 @@ public class Main extends Application implements CommunicationWithComponentsInte
     private boolean gameOver = false;
     private boolean isPaused = false;
     private int speed = 120;
-    private String direction = "UP";
     private GraphicsContext gc;
     private int foodX;
     private int foodY;
@@ -57,6 +63,7 @@ public class Main extends Application implements CommunicationWithComponentsInte
     private int score;
     private VBox root;
     private Stage primaryStage;
+    private String winner;
 
     @Override
     public void start(Stage primaryStage) {
@@ -74,7 +81,13 @@ public class Main extends Application implements CommunicationWithComponentsInte
         }
         snakeHead = snakeBody.get(0);
 
+        for (int i = 0; i < 3; i++) {
+            snakeBodyEnemy.add(new Point(1, ROWS / 2));
+        }
+        snakeHeadEnemy = snakeBodyEnemy.get(0);
+
         generateFood();
+
         timeline = new Timeline(new KeyFrame(Duration.millis(speed), e -> run()));
         timeline.setCycleCount(Animation.INDEFINITE);
         timeline.play();
@@ -113,11 +126,14 @@ public class Main extends Application implements CommunicationWithComponentsInte
     public void run() {
 
         makeGameHarder();
-        isGameOver();
-        eatFood();
+        isGameOver(snakeHead, snakeBody);
+        isGameOver(snakeHeadEnemy, snakeBodyEnemy);
+        eatFood(snakeHead, snakeBody);
+        eatFood(snakeHeadEnemy, snakeBodyEnemy);
         drawBackround();
         drawFood();
-        drawSnake();
+        drawSnake(snakeBody);
+        drawSnake(snakeBodyEnemy);
         drawScore();
         if (gameOver == true) {
             endMenu();
@@ -127,18 +143,26 @@ public class Main extends Application implements CommunicationWithComponentsInte
             snakeBody.get(i).x = snakeBody.get(i - 1).x;
             snakeBody.get(i).y = snakeBody.get(i - 1).y;
         }
+        for (int i = snakeBodyEnemy.size() - 1; i >= 1; i--) {
+            snakeBodyEnemy.get(i).x = snakeBodyEnemy.get(i - 1).x;
+            snakeBodyEnemy.get(i).y = snakeBodyEnemy.get(i - 1).y;
+        }
         switch (direction) {
             case "UP":
                 snakeHead.y--;
+                snakeHeadEnemy.y--;
                 break;
             case "DOWN":
                 snakeHead.y++;
+                snakeHeadEnemy.y++;
                 break;
             case "RIGHT":
                 snakeHead.x++;
+                snakeHeadEnemy.x++;
                 break;
             case "LEFT":
                 snakeHead.x--;
+                snakeHeadEnemy.x--;
                 break;
             default:
                 break;
@@ -175,7 +199,7 @@ public class Main extends Application implements CommunicationWithComponentsInte
 
     }
 
-    public void eatFood() {
+    public void eatFood(Point snakeHead, List<Point> snakeBody) {
         if (snakeHead.x == foodX && snakeHead.y == foodY) {
             snakeBody.add(new Point(-1, -1));
             generateFood();
@@ -187,8 +211,7 @@ public class Main extends Application implements CommunicationWithComponentsInte
         gc.drawImage(foodImage, foodX * SQUARE_SIZE, foodY * SQUARE_SIZE);
     }
 
-    public void drawSnake() {
-        gc.setFill(Color.BLUE);
+    public void drawSnake(List<Point> snakeBody) {
 
         for (int i = 0; i < snakeBody.size(); i++) {
             if (i == 0) {
@@ -199,7 +222,7 @@ public class Main extends Application implements CommunicationWithComponentsInte
         }
     }
 
-    public void isGameOver() {
+    public void isGameOver(Point snakeHead, List<Point> snakeBody) {
         if (snakeHead.x < 0 || snakeHead.y < 0 || snakeHead.x * SQUARE_SIZE >= WIDTH || snakeHead.y * SQUARE_SIZE >= HEIGHT) {
             gameOver = true;
             return;
@@ -212,14 +235,29 @@ public class Main extends Application implements CommunicationWithComponentsInte
                     break;
                 }
             }
+            for (int i = 1; i < this.snakeBodyEnemy.size(); i++) {
+                if (this.snakeHead.x == snakeBodyEnemy.get(i).x && this.snakeHead.y == snakeBodyEnemy.get(i).y) {
+                    gameOver = true;
+                    break;
+                }
+            }
+
         }
+
     }
 
     public void endMenu() {
-        timeline.stop();
-        StartGameScreen startGameScreen = new StartGameScreen();
-        startGameScreen.setInformation(getInformation());
-        startGameScreen.start(primaryStage);
+        try {
+            Socket socket = new Socket(InetAddress.getByName(SERVERURL), PORT);
+            sendInfoToServer(socket);
+            readInfoFromServer(socket);
+            timeline.stop();
+            StartGameScreen startGameScreen = new StartGameScreen();
+            startGameScreen.setInformation(getInformation());
+            startGameScreen.start(primaryStage);
+        } catch (IOException ex) {
+            Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+        }
     }
 
     public void drawScore() {
@@ -263,9 +301,8 @@ public class Main extends Application implements CommunicationWithComponentsInte
     }
 
     @Override
-    public void sendInfoToServer() {
+    public void sendInfoToServer(Socket socket) {
         try {
-            Socket socket = new Socket(InetAddress.getByName(SERVERURL), PORT);
             PrintWriter pw = new PrintWriter(socket.getOutputStream());
             pw.println(score);
             pw.flush();
@@ -277,9 +314,8 @@ public class Main extends Application implements CommunicationWithComponentsInte
     }
 
     @Override
-    public void readInfoFromServer() {
+    public void readInfoFromServer(Socket socket) {
         try {
-            Socket socket = new Socket(InetAddress.getByName(SERVERURL), PORT);
             InputStreamReader in = new InputStreamReader(socket.getInputStream());
             BufferedReader bf = new BufferedReader(in);
             String string = bf.readLine();
@@ -287,6 +323,5 @@ public class Main extends Application implements CommunicationWithComponentsInte
         } catch (IOException ex) {
             System.out.println(ex.getMessage());
         }
-
     }
 }

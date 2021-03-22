@@ -9,7 +9,7 @@ package util;
  *
  * @author vikto
  */
-public interface CommunicationWithComponentsInterface {
+public interface CommunicateWithComponentsInterface {
 
     public void setInformation(String string);
 
