@@ -5,8 +5,17 @@
  */
 package scenes;
 
+import comunnication.CommunicationReasonsEnum;
+import comunnication.ServerComunnicationModel;
 import static customAlerts.CustomAlert.createCustomAlert;
+import java.io.IOException;
+import java.net.InetAddress;
 import java.net.Socket;
+import java.net.UnknownHostException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
@@ -25,18 +34,17 @@ import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.stage.Stage;
 import main.Main;
-import util.CommunicateWithComponentsInterface;
-import util.CommunicateWithServerInterface;
+import util.ServerConfig;
+import util.SingletonCommunication;
 
 /**
  *
  * @author vikto
  */
-public class StartGameScreen extends Application implements CommunicateWithComponentsInterface, CommunicateWithServerInterface {
+public class StartGameScreen extends Application {
     //******************user*********************//
 
-    String user = null;
-    private Integer score = 0;
+    public static String user = null;
 
     //mainMenuButtons
     private static final int BUTTON_WIDTH = 150;
@@ -47,34 +55,41 @@ public class StartGameScreen extends Application implements CommunicateWithCompo
     private final Button login = new Button("Prijavi se");
     private final Button back = new Button("back");
     private BorderPane root;
-
+    public static Socket socket;
     //login page Buttons
     Button register = new Button("Registruj se");
     Button loginChecker = new Button("Prijavi se");
-
+    //fields
+    PasswordField password;
+    TextField username;
+    TextField email;
+    TextField gameName;
     //register page Buttons
     Button registerChecker = new Button("Registruj se");
+    SingletonCommunication singletonCommunication;
 
     @Override
-
-    public void start(Stage primaryStage) {
+    public void start(Stage primaryStage) throws IOException {
+        singletonCommunication = SingletonCommunication.getInstance();
         root = new BorderPane();
         root.setStyle("-fx-background-color: #123;");
         createMainMenu();
-        Scene scene = new Scene(root, 400, 400);
+        Scene scene = new Scene(root, 500, 450);
 
         primaryStage.setTitle("PyGame");
         primaryStage.setScene(scene);
         primaryStage.getIcons().add(new Image("/assets/snakelogo.png"));
         primaryStage.show();
-
+        primaryStage.setOnCloseRequest(e -> {
+            Platform.exit();
+            System.exit(0);
+        });
         play.setOnAction(e -> {
             if (user != null) {
                 new Main().start(primaryStage);
             } else {
                 createCustomAlert("Greska", "Morate biti ulogovani da bi igrali");
             }
-
         });
 
         login.setOnAction(e -> {
@@ -87,15 +102,53 @@ public class StartGameScreen extends Application implements CommunicateWithCompo
         back.setOnAction(e -> {
             createMainMenu();
         });
+
+        scores.setOnAction(e -> {
+            createScores();
+        });
+
         register.setOnAction(e -> {
             createRegister();
         });
 
         //buttons for checking info
         loginChecker.setOnAction(e -> {
-
+            Map<String, String> map = new HashMap();
+            map.put("username", username.getText());
+            map.put("password", password.getText());
+            ServerComunnicationModel model = new ServerComunnicationModel(CommunicationReasonsEnum.LOGIN, map);
+            singletonCommunication.sendInfoToServer(socket, model);
+            ServerComunnicationModel readModel = singletonCommunication.readInfoFromServer(socket);
+            System.out.println(readModel);
+            if (!readModel.getMap().get("login").equals("NULL")) {
+                user = (String) readModel.getMap().get("login");
+//                Main.sessionId = Integer.valueOf(readModel.getMap().get("sessionId").toString());
+                createCustomAlert("LOGIN", "USPESNO STE SE ULOGOVALI KAO " + user);
+                createMainMenu();
+            } else {
+                createCustomAlert("LOGIN", "POGRESNI PODACI");
+            }
         });
+
         registerChecker.setOnAction(e -> {
+            if (username.getText().length() > 3 && password.getText().length() > 5 && email.getText().contains("@") && email.getText().contains(".")) {
+                Map<String, String> map = new HashMap();
+                map.put("username", username.getText());
+                map.put("password", password.getText());
+                map.put("email", email.getText());
+                map.put("gameName", gameName.getText());
+                ServerComunnicationModel model = new ServerComunnicationModel(CommunicationReasonsEnum.REGISTER, map);
+                singletonCommunication.sendInfoToServer(socket, model);
+                ServerComunnicationModel readModel = singletonCommunication.readInfoFromServer(socket);
+                if (readModel.getMap().get("register").equals(true)) {
+                    createCustomAlert("REGISTRACIJA", "USPESNO STE SE REGISTROVALI");
+                    createMainMenu();
+                } else {
+                    createCustomAlert("REGISTRACIJA", "USER SA OVIM PODACIMA VEC POSTOJI");
+                }
+            } else {
+                createCustomAlert("GRESKA", "POGRESNI PODACI");
+            }
 
         });
     }
@@ -104,6 +157,13 @@ public class StartGameScreen extends Application implements CommunicateWithCompo
      * @param args the command line arguments
      */
     public static void main(String[] args) {
+        try {
+            socket = new Socket(InetAddress.getByName(ServerConfig.SERVERURL), ServerConfig.PORT);
+        } catch (UnknownHostException ex) {
+            Logger.getLogger(StartGameScreen.class.getName()).log(Level.SEVERE, null, ex);
+        } catch (IOException ex) {
+            Logger.getLogger(StartGameScreen.class.getName()).log(Level.SEVERE, null, ex);
+        }
         launch(args);
     }
 
@@ -147,7 +207,7 @@ public class StartGameScreen extends Application implements CommunicateWithCompo
         usernameLabel.setTextFill(Color.web("#efcc00"));
         usernameLabel.setFont(new Font("Digital-2", 18));
         usernameLabel.setMinSize(150, 50);
-        TextField username = new TextField();
+        username = new TextField();
         username.setMinWidth(150);
         username.setPrefWidth(150);
         username.setMaxWidth(150);
@@ -155,7 +215,7 @@ public class StartGameScreen extends Application implements CommunicateWithCompo
         passwordLabel.setTextFill(Color.web("#efcc00"));
         passwordLabel.setFont(new Font("Digital-2", 18));
         passwordLabel.setMinSize(150, 50);
-        PasswordField password = new PasswordField();
+        password = new PasswordField();
         password.setMinWidth(150);
         password.setPrefWidth(150);
         password.setMaxWidth(150);
@@ -180,7 +240,7 @@ public class StartGameScreen extends Application implements CommunicateWithCompo
         usernameLabel.setTextFill(Color.web("#efcc00"));
         usernameLabel.setFont(new Font("Digital-2", 18));
         usernameLabel.setMinSize(150, 50);
-        TextField username = new TextField();
+        username = new TextField();
         username.setMinWidth(150);
         username.setPrefWidth(150);
         username.setMaxWidth(150);
@@ -188,7 +248,7 @@ public class StartGameScreen extends Application implements CommunicateWithCompo
         passwordLabel.setTextFill(Color.web("#efcc00"));
         passwordLabel.setFont(new Font("Digital-2", 18));
         passwordLabel.setMinSize(150, 50);
-        PasswordField password = new PasswordField();
+        password = new PasswordField();
         password.setMinWidth(150);
         password.setPrefWidth(150);
         password.setMaxWidth(150);
@@ -196,35 +256,33 @@ public class StartGameScreen extends Application implements CommunicateWithCompo
         emailLabel.setTextFill(Color.web("#efcc00"));
         emailLabel.setFont(new Font("Digital-2", 18));
         emailLabel.setMinSize(150, 50);
-        PasswordField email = new PasswordField();
+        email = new TextField();
         email.setMinWidth(150);
         email.setPrefWidth(150);
         email.setMaxWidth(150);
+        Label gameLabel = new Label("Unesite ime u igri");
+        gameLabel.setTextFill(Color.web("#efcc00"));
+        gameLabel.setFont(new Font("Digital-2", 18));
+        gameLabel.setMinSize(150, 50);
+        gameName = new TextField();
+        gameName.setMinWidth(150);
+        gameName.setPrefWidth(150);
+        gameName.setMaxWidth(150);
         vbox.setSpacing(8);
         vbox.setPadding(new Insets(10, 10, 10, 10));
-        vbox.getChildren().addAll(back, usernameLabel, username, passwordLabel, password, emailLabel, email, registerChecker);
+        vbox.getChildren().addAll(back, usernameLabel, username, passwordLabel, password, emailLabel, email, gameLabel, gameName, registerChecker);
         vbox.setAlignment(Pos.CENTER);
         root.setTop(vbox);
     }
 
-    @Override
-    public void setInformation(String string) {
-        this.score = Integer.valueOf(string);
+    public void createSkin() {
+        root.getChildren().clear();
+        HBox hbox = new HBox();
+        ImageView iv = new ImageView();
     }
 
-    @Override
-    public String getInformation() {
-        return "";
-    }
-
-    @Override
-    public void sendInfoToServer(Socket socket) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
-    }
-
-    @Override
-    public void readInfoFromServer(Socket socket) {
-        throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
+    public void createScores() {
+        root.getChildren().clear();
     }
 
 }

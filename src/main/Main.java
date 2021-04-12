@@ -5,22 +5,20 @@
  */
 package main;
 
+import com.sun.jmx.remote.internal.ServerCommunicatorAdmin;
+import comunnication.CommunicationReasonsEnum;
+import comunnication.ServerComunnicationModel;
 import java.awt.Point;
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.net.InetAddress;
-import java.net.Socket;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
-import java.util.logging.Level;
-import java.util.logging.Logger;
+import java.util.Map;
 import javafx.animation.Animation;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.Application;
+import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -31,29 +29,29 @@ import javafx.scene.text.Font;
 import javafx.stage.Stage;
 import javafx.util.Duration;
 import scenes.StartGameScreen;
-import util.CommunicateWithServerInterface;
-import util.CommunicateWithComponentsInterface;
+import util.SingletonCommunication;
 
-public class Main extends Application implements CommunicateWithComponentsInterface, CommunicateWithServerInterface {
+public class Main extends Application {
 
     //******************user*********************//
-    String user;
+    public static String user = StartGameScreen.user;
     //*************snake player one*************//
     private List<Point> snakeBody = new ArrayList<>();
-    private String direction = "UP";
     private Point snakeHead;
     //*********snake player two****************//
     private List<Point> snakeBodyEnemy = new ArrayList<>();
-    private String directionEnemy = "UP";
     private Point snakeHeadEnemy;
+    //****************************************//
+    public static Integer sessionId;
+    private String direction = "UP";
+    //***************************************//
     //***********canvas settings**************//    
     private static final double WIDTH = 800;
     private static final double HEIGHT = WIDTH;
     private static final int ROWS = 20;
     private static final int COLUMNS = ROWS;
     private static final int SQUARE_SIZE = (int) (WIDTH / ROWS);
-    private boolean gameOver = false;
-    private boolean isPaused = false;
+    public static boolean gameOver = false;
     private int speed = 120;
     private GraphicsContext gc;
     private int foodX;
@@ -64,12 +62,30 @@ public class Main extends Application implements CommunicateWithComponentsInterf
     private VBox root;
     private Stage primaryStage;
     private String winner;
+    public static ServerComunnicationModel readModel;
+    private SingletonCommunication singletonCommunication;
 
     @Override
     public void start(Stage primaryStage) {
+        /**
+         ********************
+         */
+        singletonCommunication = SingletonCommunication.getInstance();
 
+        Map<String, String> map = new HashMap<>();
+        map.put("user", user);
+        map.put("direction", direction);
+        ServerComunnicationModel model = new ServerComunnicationModel(CommunicationReasonsEnum.MOVE, map);
+
+//************************************************************************************************//
+        singletonCommunication.sendInfoToServer(StartGameScreen.socket, model);
+        readModel = singletonCommunication.readInfoFromServer(StartGameScreen.socket);
+//************************************************************************************************//
+
+        /**
+         * *****************
+         */
         this.primaryStage = primaryStage;
-
         root = new VBox();
         Canvas canvas = new Canvas(WIDTH, HEIGHT);
         gc = canvas.getGraphicsContext2D();
@@ -95,9 +111,13 @@ public class Main extends Application implements CommunicateWithComponentsInterf
         primaryStage.setScene(scene);
         primaryStage.getIcons().add(new Image("/assets/snakelogo.png"));
         primaryStage.show();
-
+        primaryStage.setOnCloseRequest(e -> {
+            Platform.exit();
+            System.exit(0);
+        });
         //eventsForPlayer
         scene.setOnKeyPressed(e -> {
+
             switch (e.getCode()) {
                 case UP:
                     direction = "UP";
@@ -111,65 +131,44 @@ public class Main extends Application implements CommunicateWithComponentsInterf
                 case LEFT:
                     direction = "LEFT";
                     break;
-                case ESCAPE:
-                    pauseGame();
+
                 default:
                     break;
             }
-        });
-    }
+            // TODO UMESTO DA SE  PRIMAJU INFORMACIJE O KRETANJU PRI KLIKU TO RADITI SA  THREADOM
+//************************************************************************************************//
+            map.put("direction", direction);
+            singletonCommunication.sendInfoToServer(StartGameScreen.socket, model);
+            readModel = singletonCommunication.readInfoFromServer(StartGameScreen.socket);
+//************************************************************************************************//
 
-    public static void main(String[] args) {
-        launch(args);
+        });
     }
 
     public void run() {
 
-        makeGameHarder();
         isGameOver(snakeHead, snakeBody);
         isGameOver(snakeHeadEnemy, snakeBodyEnemy);
+        if (gameOver) {
+            endMenu();
+        }
+        makeGameHarder();
+
         eatFood(snakeHead, snakeBody);
         eatFood(snakeHeadEnemy, snakeBodyEnemy);
+
         drawBackround();
         drawFood();
         drawSnake(snakeBody);
         drawSnake(snakeBodyEnemy);
         drawScore();
-        if (gameOver == true) {
-            endMenu();
 
-        }
-        for (int i = snakeBody.size() - 1; i >= 1; i--) {
-            snakeBody.get(i).x = snakeBody.get(i - 1).x;
-            snakeBody.get(i).y = snakeBody.get(i - 1).y;
-        }
-        for (int i = snakeBodyEnemy.size() - 1; i >= 1; i--) {
-            snakeBodyEnemy.get(i).x = snakeBodyEnemy.get(i - 1).x;
-            snakeBodyEnemy.get(i).y = snakeBodyEnemy.get(i - 1).y;
-        }
-        switch (direction) {
-            case "UP":
-                snakeHead.y--;
-                snakeHeadEnemy.y--;
-                break;
-            case "DOWN":
-                snakeHead.y++;
-                snakeHeadEnemy.y++;
-                break;
-            case "RIGHT":
-                snakeHead.x++;
-                snakeHeadEnemy.x++;
-                break;
-            case "LEFT":
-                snakeHead.x--;
-                snakeHeadEnemy.x--;
-                break;
-            default:
-                break;
-        }
+        moveSnakes(snakeBody, snakeBodyEnemy);
+        makeSwitchDirection(direction, snakeHead, snakeHeadEnemy);
+
     }
 
-    public void drawBackround() {
+    private void drawBackround() {
         for (int i = 0; i < ROWS; i++) {
             for (int j = 0; j < COLUMNS; j++) {
                 if ((i + j) % 2 == 0) {
@@ -182,7 +181,7 @@ public class Main extends Application implements CommunicateWithComponentsInterf
         }
     }
 
-    public void generateFood() {
+    private void generateFood() {
         start:
         while (true) {
             foodX = (int) (Math.random() * ROWS);
@@ -199,7 +198,7 @@ public class Main extends Application implements CommunicateWithComponentsInterf
 
     }
 
-    public void eatFood(Point snakeHead, List<Point> snakeBody) {
+    private void eatFood(Point snakeHead, List<Point> snakeBody) {
         if (snakeHead.x == foodX && snakeHead.y == foodY) {
             snakeBody.add(new Point(-1, -1));
             generateFood();
@@ -207,11 +206,11 @@ public class Main extends Application implements CommunicateWithComponentsInterf
         }
     }
 
-    public void drawFood() {
+    private void drawFood() {
         gc.drawImage(foodImage, foodX * SQUARE_SIZE, foodY * SQUARE_SIZE);
     }
 
-    public void drawSnake(List<Point> snakeBody) {
+    private void drawSnake(List<Point> snakeBody) {
 
         for (int i = 0; i < snakeBody.size(); i++) {
             if (i == 0) {
@@ -222,7 +221,7 @@ public class Main extends Application implements CommunicateWithComponentsInterf
         }
     }
 
-    public void isGameOver(Point snakeHead, List<Point> snakeBody) {
+    private void isGameOver(Point snakeHead, List<Point> snakeBody) {
         if (snakeHead.x < 0 || snakeHead.y < 0 || snakeHead.x * SQUARE_SIZE >= WIDTH || snakeHead.y * SQUARE_SIZE >= HEIGHT) {
             gameOver = true;
             return;
@@ -246,27 +245,24 @@ public class Main extends Application implements CommunicateWithComponentsInterf
 
     }
 
-    public void endMenu() {
+    private void endMenu() {
         try {
-            Socket socket = new Socket(InetAddress.getByName(SERVERURL), PORT);
-            sendInfoToServer(socket);
-            readInfoFromServer(socket);
+            primaryStage.close();
             timeline.stop();
-            StartGameScreen startGameScreen = new StartGameScreen();
-            startGameScreen.setInformation(getInformation());
-            startGameScreen.start(primaryStage);
+            gameOver = false;
+            new StartGameScreen().start(primaryStage);
         } catch (IOException ex) {
-            Logger.getLogger(Main.class.getName()).log(Level.SEVERE, null, ex);
+            System.out.println(ex.getMessage());
         }
     }
 
-    public void drawScore() {
+    private void drawScore() {
         gc.setFill(Color.GREEN);
         gc.setFont(new Font("Digital-2", 35));
         gc.fillText("Score: " + score, 10, 35);
     }
 
-    public void makeGameHarder() {
+    private void makeGameHarder() {
         if (score > 50) {
             speed = 100;
         } else if (score > 100) {
@@ -280,48 +276,53 @@ public class Main extends Application implements CommunicateWithComponentsInterf
         }
     }
 
-    public void pauseGame() {
-        if (isPaused) {
-            timeline.play();
-        } else {
-            timeline.pause();
+    private static void makeSwitchDirection(String direction, Point snakeHead, Point snakeHeadEnemy) {
+
+        switch (direction) {
+
+            case "UP":
+                if (readModel.getMap().get("user").equals(user)) {
+                    snakeHead.y--;
+                } else {
+                    snakeHeadEnemy.y--;
+                }
+                break;
+            case "DOWN":
+                if (readModel.getMap().get("user").equals(user)) {
+                    snakeHead.y++;
+                } else {
+                    snakeHeadEnemy.y++;
+                }
+                break;
+            case "RIGHT":
+                if (readModel.getMap().get("user").equals(user)) {
+                    snakeHead.x++;
+                } else {
+                    snakeHeadEnemy.x++;
+                }
+                break;
+            case "LEFT":
+                if (readModel.getMap().get("user").equals(user)) {
+                    snakeHead.x--;
+                } else {
+                    snakeHeadEnemy.x--;
+                }
+                break;
+            default:
+                break;
         }
-        isPaused = !isPaused;
 
     }
 
-    @Override
-    public void setInformation(String string) {
-
-    }
-
-    @Override
-    public String getInformation() {
-        return String.valueOf(this.score);
-    }
-
-    @Override
-    public void sendInfoToServer(Socket socket) {
-        try {
-            PrintWriter pw = new PrintWriter(socket.getOutputStream());
-            pw.println(score);
-            pw.flush();
-        } catch (UnknownHostException ex) {
-            System.out.println(ex.getMessage());
-        } catch (IOException ex) {
-            System.out.println(ex.getMessage());
+    private static void moveSnakes(List<Point> snakeBody, List<Point> snakeBodyEnemy) {
+        for (int i = snakeBody.size() - 1; i >= 1; i--) {
+            snakeBody.get(i).x = snakeBody.get(i - 1).x;
+            snakeBody.get(i).y = snakeBody.get(i - 1).y;
         }
-    }
 
-    @Override
-    public void readInfoFromServer(Socket socket) {
-        try {
-            InputStreamReader in = new InputStreamReader(socket.getInputStream());
-            BufferedReader bf = new BufferedReader(in);
-            String string = bf.readLine();
-            System.out.println(string);
-        } catch (IOException ex) {
-            System.out.println(ex.getMessage());
+        for (int i = snakeBodyEnemy.size() - 1; i >= 1; i--) {
+            snakeBodyEnemy.get(i).x = snakeBodyEnemy.get(i - 1).x;
+            snakeBodyEnemy.get(i).y = snakeBodyEnemy.get(i - 1).y;
         }
     }
 }

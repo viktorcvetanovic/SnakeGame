@@ -3,15 +3,12 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package util;
+package comunnication;
 
 /**
  *
  * @author vikto
  */
-public interface CommunicateWithComponentsInterface {
-
-    public void setInformation(String string);
-
-    public String getInformation();
+public enum CommunicationReasonsEnum {
+    LOGIN, REGISTER, MOVE, SETSCORE, CHANGESKIN
 }

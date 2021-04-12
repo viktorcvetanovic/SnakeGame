@@ -21,7 +21,6 @@ public class CustomAlert {
         alert.setTitle(headerText);
         alert.setHeaderText(headerText);
         ImageView icon = new ImageView("/assets/snakelogo.png");
-        // The standard Alert icon size is 48x48, so let's resize our icon to match
         icon.setFitHeight(48);
         icon.setFitWidth(48);
         alert.getDialogPane().setGraphic(icon);
